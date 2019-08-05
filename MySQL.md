@@ -166,6 +166,12 @@ mysql> show table status from mysql;###该命令将输出mysql数据库管理系
 #这里的mysql指的是数据库的名字，不是表名
 mysql> SHOW TABLE STATUS from mysql LIKE 'time%';     # 表名以runoob开头的表的信息
 mysql> SHOW TABLE STATUS from mysql LIKE 'time%'\G;   # 加上\G，查询结果按列打印
+
+#查看所有的连接信息
+mysql> show processlist;
+
+#查看mysql的版本
+mysql> select version();
 ```
 
 **加上\G，查询结果按列打印**
@@ -657,6 +663,20 @@ WHERE column_name operator value
 GROUP BY column_name;
 ```
 
+group by中出现的字段一定要和列表中的字段匹配，除了聚合函数
+
+
+
+但是我的winlocal5.7.26居然没有报错
+
+mysql> select min(user_id), user_name, sex from user_test group by sex;
+
+
+
+如果报错，需要强行执行，可以在这句语句之前，加入
+
+SET sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))
+
 
 
 
@@ -714,6 +734,39 @@ EXISTS   =   IN,意思相同不过语法上有点点区别，好像使用IN效�
 
 NOT   EXISTS   =   NOT   IN   ,意思相同不过语法上有点点区别 
 `SELECT   ID,NAME   FROM   A   WHERE　ID　NOT   IN   (SELECT   AID   FROM   B) `
+
+
+
+
+
+#### distinct
+
+默认是管到后面所有的列
+
+```mysql
+mysql> select distinct user_name, sex from user_test;
++-----------+------+
+| user_name | sex  |
++-----------+------+
+| zhangsan  |    1 |
+| lisi      |    0 |
+| laowang   |    1 |
++-----------+------+
+3 rows in set (0.00 sec)
+
+mysql> select distinct(user_name), sex from user_test;
++-----------+------+
+| user_name | sex  |
++-----------+------+
+| zhangsan  |    1 |
+| lisi      |    0 |
+| laowang   |    1 |
+| laowang   |    0 |
++-----------+------+
+4 rows in set (0.00 sec)
+```
+
+
 
 
 
@@ -1312,6 +1365,91 @@ mysql> ALTER IGNORE TABLE person_tbl
     -> ADD PRIMARY KEY (last_name, first_name);
 ```
 
+
+
+### 锁
+
+隐式加锁：
+
+- 对于UPDATE、DELETE和INSERT语句，InnoDB会自动给涉及数据集加排他锁（X)；
+  
+
+显示加锁：
+
+- 共享锁（S）：`SELECT * FROM table_name WHERE ... LOCK IN SHARE MODE`
+- 排他锁（X) ：`SELECT * FROM table_name WHERE ... FOR UPDATE`
+
+
+
+用`SELECT … IN SHARE MODE`获得共享锁，主要用在需要数据依存关系时来确认某行记录是否存在，并确保没有人对这个记录进行UPDATE或者DELETE操作。
+
+但是如果当前事务也需要对该记录进行更新操作，则很有可能造成死锁，对于锁定行记录后需要进行更新操作的应用，应该使用`SELECT… FOR UPDATE`方式获得排他锁。
+
+
+
+**本人用的windows的mysql5.7.26实验。没有lock in share mode报错。for update在另一个事务中可读，更新会卡住，要等当前事务commit**
+
+
+
+InnoDB如何加表锁：
+
+在用 LOCK TABLES对InnoDB表加锁时要注意，要将AUTOCOMMIT设为0，否则MySQL不会给表加锁；事务结束前，不要用UNLOCK TABLES释放表锁，因为UNLOCK TABLES会隐含地提交事务；COMMIT或ROLLBACK并不能释放用LOCK TABLES加的表级锁，必须用UNLOCK TABLES释放表锁。
+
+```mysql
+SET AUTOCOMMIT=0;
+LOCK TABLES t1 WRITE, t2 READ, ...;
+[do something with tables t1 and t2 here];
+COMMIT;
+UNLOCK TABLES;
+```
+
+
+
+#### 间隙锁（Next-Key锁）
+
+间隙锁定义：
+
+nnodb的锁定规则是通过在指向数据记录的第一个索引键之前和最后一个索引键之后的空域空间上标记锁定信息而实现的。 Innodb的这种锁定实现方式被称为“ NEXT-KEY locking” （间隙锁），因为Query执行过程中通过范围查找的话，它会锁定整个范围内所有的索引键值，即使这个键值并不存在。
+
+
+
+例：假如emp表中只有101条记录，其empid的值分别是 1,2,…,100,101，下面的SQL：
+
+```mysql
+mysql> select * from emp where empid > 100 for update;
+```
+
+
+是一个范围条件的检索，InnoDB不仅会对符合条件的empid值为101的记录加锁，也会对empid大于101（这些记录并不存在）的“间隙”加锁。
+
+
+
+是一个范围条件的检索，InnoDB不仅会对符合条件的empid值为101的记录加锁，也会对empid大于101（这些记录并不存在）的“间隙”加锁。
+
+间隙锁的缺点：
+
+- 间隙锁有一个比较致命的弱点，就是当锁定一个范围键值之后，即使某些不存在的键值也会被无辜的锁定，而造成在锁定的时候无法插入锁定键值范围内的任何数据。在某些场景下这可能会对性能造成很大的危害
+- 当Query无法利用索引的时候， Innodb会放弃使用行级别锁定而改用表级别的锁定，造成并发性能的降低；
+- 当Quuery使用的索引并不包含所有过滤条件的时候，数据检索使用到的索引键所指向的数据可能有部分并不属于该Query的结果集的行列，但是也会被锁定，因为间隙锁锁定的是一个范围，而不是具体的索引键；
+- 当Query在使用索引定位数据的时候，如果使用的索引键一样但访问的数据行不同的时候（索引只是过滤条件的一部分），一样会被锁定
+
+
+
+间隙锁的作用：
+
+防止幻读，以满足相关隔离级别的要求。
+为了数据恢复和复制的需要。
+
+
+
+注意
+
+在实际应用开发中，尤其是并发插入比较多的应用，我们要尽量优化业务逻辑，尽量使用相等条件来访问更新数据，避免使用范围条件。
+InnoDB除了通过范围条件加锁时使用间隙锁外，如果使用相等条件请求给一个不存在的记录加锁，InnoDB也会使用间隙锁。
+
+
+
+参考https://blog.csdn.net/zcl_love_wx/article/details/81983267
 
 
 
