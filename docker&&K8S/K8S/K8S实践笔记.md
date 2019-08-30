@@ -203,6 +203,9 @@ service-nginx   LoadBalancer   10.96.179.68   <pending>     8080:31525/TCP   8s
 [root@localhost k8s]# curl 10.96.179.68:8080
 [root@localhost k8s]# curl 192.168.221.129:31525
 以上两个都是可以访问的
+
+
+云服务商那里，EXTERNAL-IP那列会有东西
 ```
 
 
@@ -471,13 +474,130 @@ default     test-ng-ingress   ng.test.com             80      4m1s
 结果为nginx默认页面
 ```
 
-以上是我在K8S online上的测验。但是我在minikube上测试`curl -H "Host:a.b.d" 192.168.221.129`是不行的
+以上是我在K8S online上的测验。但是我在minikube上测试`curl -H "Host:a.b.d" 192.168.221.129`是不行的.minikube应该是需要额外的东西http://www.spring4all.com/article/1208这篇写的很好
 
 
 
 
 
-最后对外访问的路径变成了 k8s.xxx.com/service_name/service_method?params=xxx，这个路径可以通过k8s的ingress访问到配置的的nginx服务，然后通过nginx的配置，可以把原始的路径进行了处理，把请求变成service_name/service_method?params=xxx然后转发给后面的真实服务。
+#### 再一次实验
+
+```
+wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/mandatory.yaml
+
+wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/static/provider/baremetal/service-nodeport.yaml
+
+vi service-nodeport.yaml
+在spec:最后面添加
+  externalIPs:
+    - 172.17.0.48           # 这个需要修改为本机ip
+```
+
+```
+kubectl apply -f mandatory.yaml
+kubectl apply -f service-nodeport.yaml
+
+以上步骤大概是在配置ingress-controller
+```
+
+```
+kubectl run d1 --image=httpd:alpine --port=80
+kubectl expose deployment d1 --target-port 80
+kubectl run d2 --image=nginx:alpine --port=80
+kubectl expose deployment d2 --target-port 80
+```
+
+
+
+```
+vi ingress.yml
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-test
+spec:
+  rules:
+
+- host: v1.middle.com
+  http:
+    paths:
+  - backend:
+    serviceName: d1
+    servicePort: 80
+- host: v2.middle.com
+  http:
+    paths:
+  - backend:
+    serviceName: d2
+    servicePort: 80
+```
+
+```
+kubectl apply -f ingress.yml
+```
+
+
+
+```bash
+master $ kubectl describe ingress ingress-test
+Name:             ingress-test
+Namespace:        default
+Address:          172.17.0.48      # 出现这个很重要
+Default backend:  default-http-backend:80 (<none>)
+Rules:
+  Host           Path  Backends
+
+------
+
+  v1.middle.com
+                    d1:80 (10.32.0.3:80)   # 出现这个很重要
+  v2.middle.com
+                    d2:80 (10.32.0.4:80)   # 出现这个很重要
+Annotations:
+  kubectl.kubernetes.io/last-applied-configuration:  {"apiVersion":"extensions/v1beta1","kind":"Ingress","metadata":{"annotations":{},"name":"ingress-test","namespace":"default"},"spec":{"rules":[{"host":"v1.middle.com","http":{"paths":[{"backend":{"serviceName":"d1","servicePort":80}}]}},{"host":"v2.middle.com","http":{"paths":[{"backend":{"serviceName":"d2","servicePort":80}}]}}]}}
+
+Events:
+  Type    Reason  Age    From                      Message
+
+------
+
+  Normal  CREATE  3m22s  nginx-ingress-controller  Ingress default/ingress-test
+  Normal  UPDATE  2m38s  nginx-ingress-controller  Ingress default/ingress-test
+
+```
+
+curl -H "Host:v1.middle.com" 172.17.0.48    或者用浏览器访问v1.middle.com
+curl -H "Host:v2.middle.com" 172.17.0.48    或者用浏览器访问v2.middle.com
+
+
+
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-test
+spec:
+  rules:
+  - host: middle.com
+    http:
+      paths:
+      - path: /v1
+        backend:
+          serviceName: d1
+          servicePort: 80
+      - path: /v2
+        backend:
+          serviceName: d2
+          servicePort: 80
+```
+
+```
+kubectl apply -f ingress.yml
+```
+
+这个我真的不知道curl命令怎么写，才能正确访问。
+
+修改/etc/hosts，浏览器访问middle.com/v1 这样应该是可以的。online环境没有浏览器，哭
 
 
 
@@ -501,7 +621,7 @@ ClusterIP Service 是 Kubernetes 的默认服务。它给你一个集群内的�
 
 **LoadBlancer Service**
 
-LoadBlancer Service 是 Kubernetes 结合云平台的组件，如国外 GCE、AWS、国内阿里云等等，使用它向使用的底层云平台申请创建负载均衡器来实现，有局限性，对于使用云平台的集群比较方便。
+LoadBlancer Service 是 Kubernetes 结合<font color="red">云平台</font>的组件，如国外 GCE、AWS、国内阿里云等等，使用它向使用的底层云平台申请创建负载均衡器来实现，有局限性，对于使用云平台的集群比较方便。
 
 **NodePort Service**
 

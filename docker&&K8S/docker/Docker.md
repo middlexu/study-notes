@@ -269,6 +269,14 @@ tag / push / pull 镜像
    ```shell
    $> sudo docker ps -l
    ```
+   
+3. 查看状态为exited的容器
+
+   ```bash
+   $> sudo docker container ls -f "status=exited"
+   ```
+
+   
 
 **docker命令解释**
 
@@ -337,6 +345,7 @@ docker              run      hello-world
 
 # 删除已经停止运行的容器
 [root@localhost ~]# docker rm $(docker ps -f "status=exited" -q)
+或者docker container prune
 ```
 
 #### 容器命名

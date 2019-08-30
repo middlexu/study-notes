@@ -120,3 +120,8 @@ java -version
 
 
 
+### tldr的安装
+
+tldr用来代替man命令的
+
+pip install tldr
