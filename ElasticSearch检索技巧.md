@@ -1,5 +1,9 @@
 # ElasticSearch检索技巧
 
+关系数据库 ⇒ 数据库 ⇒ 表 ⇒ 行 ⇒ 列(Columns)
+
+Elasticsearch ⇒ 索引 ⇒ 类型 ⇒ 文档 ⇒ 字段(Fields)
+
 ### 数据准备
 
 为了讲解不同类型 ES 检索，我们将要对包含以下类型的文档集合进行检索：

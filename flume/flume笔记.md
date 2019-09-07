@@ -93,7 +93,8 @@ Position File的格式如下：
     DefaultSinkProcessor (一个channel，一个sink)
     LoadBalancingSinkProcessor (一个channel，多个sink，负载均衡，可配置权重)
     FailoverSinkProcessor  (一个channel，多个sink，向权重大的sink发数据，权重大的挂了，才会向权重低的发)
-
 + flume与flume之间数据传递用avro，并且是接受端开启的服务器
-
 + 还可以自定义source和sink
++ source
+  - spooldir监控文件夹，监视新增文件。上传完成的文件会以.COMPLETED 结尾。也就是说，这个文件夹里的文件不能修改
+  - taildir监控目录下的多个追加文件，能实现断点续传。生产环境用的多。

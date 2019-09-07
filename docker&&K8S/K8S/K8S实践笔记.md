@@ -112,6 +112,8 @@ spec:
 
 比RC（ReplicationController）功能要强大一些，用来替代RC的
 
+功能 Deployment > ReplicaSet > ReplicationController
+
 
 
 deployment_nginx.yml
@@ -315,6 +317,8 @@ $ curl 192.168.221.129:31480
 
 ### ingress
 
+这个写的不好，可以参考ingress.pdf文档
+
 **容器外部访问容器内部（通过域名访问）**
 
 
@@ -327,6 +331,8 @@ kubectl expose deployment d2 --target-port 80 --type NodePort
 ```
 
 
+
+**要用ingress，需要部署nginx-ingress**
 
 ingress-deployment.yml
 
